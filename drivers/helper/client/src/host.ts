@@ -10,6 +10,8 @@ interface RoomLike {
   id?: string;
   battle?: { stepQueue?: unknown; ended?: boolean; id?: string } | null;
   request?: unknown;
+  /** The rewritten client sets this for a player and leaves it empty for a spectator. */
+  side?: unknown;
 }
 
 export interface HostWindow {
@@ -64,16 +66,45 @@ function isBattleRoom(room: RoomLike | null | undefined): room is RoomLike & { i
 
 /** The rooms to consider, foreground first. */
 function candidateRooms(host: HostWindow): (RoomLike | null | undefined)[] {
-  if (host.PS?.rooms) return [host.PS.room, ...Object.values(host.PS.rooms)];
-  if (host.app?.rooms) return [host.app.curRoom, host.app.curSideRoom, ...Object.values(host.app.rooms)];
-  return [];
+  const all = host.PS?.rooms
+    ? [host.PS.room, ...Object.values(host.PS.rooms)]
+    : host.app?.rooms ? [host.app.curRoom, host.app.curSideRoom, ...Object.values(host.app.rooms)] : [];
+  // The room in front is also in the room list. Keep the first of each, so the front room stays first.
+  return all.filter((room, i) => all.indexOf(room) === i);
 }
 
-/** The battle to follow: the one in front, else the one already followed if it is still open, else the first open. */
-export function findBattleRoom(host: HostWindow, following: string | null): string | null {
-  const [front] = candidateRooms(host);
-  if (isBattleRoom(front)) return front.id;
+/** True when the user plays in this room, as opposed to watching it: the client gave them a private request or a side. */
+function isPlayerRoom(room: RoomLike): boolean {
+  const requestSide = (room.request as { side?: { id?: unknown } } | null | undefined)?.side?.id;
+  return !!requestSide || (!!room.side && typeof room.side === 'object');
+}
+
+export function openBattleRoomIds(host: HostWindow): string[] {
+  return candidateRooms(host).filter(isBattleRoom).map((r) => r.id);
+}
+
+/** Rooms where the user is a player right now. */
+export function playerRoomIds(host: HostWindow): string[] {
+  return candidateRooms(host).filter(isBattleRoom).filter(isPlayerRoom).map((r) => r.id);
+}
+
+/**
+ * The battle to follow, in order of preference: the front battle if the user plays in it; the one already followed if
+ * they still play in it; any other battle they play in; then, with nothing of their own, the front battle, the one
+ * already followed, or the first open.
+ *
+ * `known` holds rooms seen as the user's own earlier. A client drops the request between decisions, and the room must
+ * not stop counting as theirs for that.
+ */
+export function findBattleRoom(host: HostWindow, following: string | null, known: ReadonlySet<string> = new Set()): string | null {
   const rooms = candidateRooms(host).filter(isBattleRoom);
+  const mine = (r: RoomLike & { id: string }) => isPlayerRoom(r) || known.has(r.id);
+  const [front] = candidateRooms(host);
+  if (isBattleRoom(front) && mine(front)) return front.id;
+  if (following && rooms.some((r) => r.id === following && mine(r))) return following;
+  const own = rooms.find(mine);
+  if (own) return own.id;
+  if (isBattleRoom(front)) return front.id;
   if (following && rooms.some((r) => r.id === following)) return following;
   return rooms.length ? rooms[0].id : null;
 }
@@ -82,7 +113,8 @@ function roomById(host: HostWindow, id: string): RoomLike | undefined {
   return host.PS?.rooms?.[id] ?? host.app?.rooms?.[id];
 }
 
-function userName(host: HostWindow): string {
+/** The Showdown name this page is logged in as. Empty if unknown. */
+export function readUserName(host: HostWindow): string {
   return host.PS?.user?.name ?? host.app?.user?.attributes?.name ?? '';
 }
 
@@ -98,7 +130,7 @@ export function readOpenBattle(host: HostWindow, roomId: string): OpenBattle | n
     lines: queue.filter((l): l is string => typeof l === 'string'),
     request,
     side: sideId === 'p1' || sideId === 'p2' ? sideId : null,
-    user: userName(host),
+    user: readUserName(host),
     ended: !!room.battle!.ended,
   };
 }

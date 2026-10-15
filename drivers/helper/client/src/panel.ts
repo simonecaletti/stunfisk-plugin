@@ -10,7 +10,7 @@ export const STYLE = `
 .sfh section{padding:8px 10px;border-top:1px solid #eee}.sfh h4{margin:0 0 4px;font-size:12px;text-transform:uppercase;color:#666}
 .sfh label{display:block;margin:4px 0 2px}.sfh input,.sfh select{width:100%;padding:3px}.sfh button{margin-top:6px;padding:3px 8px}
 .sfh .rec{font-size:15px;font-weight:600}.sfh table{width:100%;border-collapse:collapse}.sfh td{padding:2px 4px;border-top:1px solid #eee}
-.sfh .note{color:#865;margin:2px 0}.sfh .err{color:#a00}.sfh .muted{color:#777}.sfh .na{color:#999}
+.sfh .note{color:#865;margin:2px 0}.sfh .err{color:#a00}.sfh .muted{color:#777}.sfh .na{color:#999}.sfh button.lnk{background:none;border:0;padding:0;margin-top:6px;color:#36c;text-decoration:underline;cursor:pointer}
 @media (prefers-color-scheme:dark){.sfh{color:#ddd;background:#1c1c24;border-color:#445}.sfh section,.sfh td{border-color:#334}.sfh h4,.sfh .muted{color:#99a}.sfh input,.sfh select{background:#2a2a35;color:#ddd}}
 `;
 
@@ -30,14 +30,27 @@ function advice(a: Analysis | null, v: ViewState): string {
   return `<div class="muted">${esc(head)}</div>${rec}${others}${foe}${notes}`;
 }
 
-function account(v: ViewState): string {
+function account(v: ViewState, emailMode = false): string {
   const s = v.settings;
-  if (v.connection === 'signed-in') return `<div>Signed in as <b>${esc(s.email)}</b></div><button data-act="signout">Sign out</button>`;
+  if (v.connection === 'signed-in') {
+    const site = s.run_mode === 'local' ? s.local_url : s.remote_url;
+    const showdown = v.link
+      ? `<div>Showdown: <b>${esc(v.link.name)}</b> ${v.link.confirmed ? '(confirmed)' : '(waiting for this browser to be logged in as that name)'}</div>`
+      : `<div class="muted">No Showdown account linked. Link it at ${esc(site)}</div>`;
+    return `<div>Signed in as <b>${esc(v.who || s.email)}</b></div>${showdown}<button data-act="signout">Sign out</button>`;
+  }
   if (v.connection === 'code-sent') {
     return `<label>Code from the email<input data-f="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
       <button data-act="verify">Sign in</button> <button data-act="restart">Use another address</button>`;
   }
-  return `<label>Email<input data-f="email" type="email" value="${esc(s.email)}" autocomplete="email"></label><button data-act="request">Send me a code</button>`;
+  if (v.usernameLogin && !emailMode) {
+    const named = v.browserName
+      ? `<div>Logged in to Showdown as <b>${esc(v.browserName)}</b></div><button data-act="signinname">Sign in as ${esc(v.browserName)}</button>`
+      : '<div class="muted">Log in to Showdown to sign in with your username.</div>';
+    return `${named}<div><button class="lnk" data-act="useemail">Use an email instead</button></div>`;
+  }
+  const back = v.usernameLogin ? '<div><button class="lnk" data-act="usename">Use my Showdown username</button></div>' : '';
+  return `<label>Email<input data-f="email" type="email" value="${esc(s.email)}" autocomplete="email"></label><button data-act="request">Send me a code</button>${back}`;
 }
 
 function options(items: { id: string; name: string; available: boolean; reason: string }[] | undefined, current: string): string {
@@ -60,10 +73,10 @@ function settingsForm(v: ViewState): string {
 }
 
 /** The whole panel as HTML. Every value is escaped; behaviour is attached by `mountPanel` through `data-*` attributes. */
-export function renderPanel(v: ViewState, open = true): string {
+export function renderPanel(v: ViewState, open = true, emailMode = false): string {
   const body = open ? `
     <section><h4>Live match helper</h4>${v.connection === 'signed-in' ? advice(v.analysis, v) : '<p class="muted">Sign in to get advice.</p>'}${v.message ? `<div class="${v.status === 'error' ? 'err' : 'muted'}">${esc(v.message)}</div>` : ''}</section>
-    <section><h4>Account</h4>${account(v)}</section>
+    <section><h4>Account</h4>${account(v, emailMode)}</section>
     <section><h4>Settings</h4>${settingsForm(v)}</section>` : '';
   return `<div class="sfh"><header data-act="toggle"><b>Stunfisk Coach</b><span>${open ? '–' : '+'}</span></header>${body}</div>`;
 }
@@ -77,10 +90,11 @@ interface DomLike {
 /** Renders into `el` on every state change and wires its controls to the controller. */
 export function mountPanel(el: DomLike, controller: HelperController): () => void {
   let open = true;
+  let emailMode = false;
   const draw = (v: ViewState) => {
     // Keep what the user is typing: a redraw while they type a code must not wipe it.
     const typed = { email: el.querySelector('[data-f=email]')?.value, code: el.querySelector('[data-f=code]')?.value };
-    el.innerHTML = `<style>${STYLE}</style>${renderPanel(v, open)}`;
+    el.innerHTML = `<style>${STYLE}</style>${renderPanel(v, open, emailMode)}`;
     for (const [k, val] of Object.entries(typed)) {
       const input = el.querySelector(`[data-f=${k}]`);
       if (input && val) input.value = val;
@@ -92,6 +106,9 @@ export function mountPanel(el: DomLike, controller: HelperController): () => voi
     if (act === 'toggle') { open = !open; draw(controller.view()); }
     else if (act === 'request') void controller.requestCode(field('email'));
     else if (act === 'verify') void controller.verifyCode(field('code'));
+    else if (act === 'signinname') void controller.signInWithBrowserName();
+    else if (act === 'useemail') { emailMode = true; draw(controller.view()); }
+    else if (act === 'usename') { emailMode = false; draw(controller.view()); }
     else if (act === 'restart') void controller.signOut();
     else if (act === 'signout') void controller.signOut();
   });

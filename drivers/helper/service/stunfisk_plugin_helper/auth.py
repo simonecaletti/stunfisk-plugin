@@ -54,7 +54,7 @@ class AuthService:
     @staticmethod
     def normalise(email: str) -> str:
         email = (email or "").strip().lower()
-        if len(email) > 254 or not _EMAIL.match(email):
+        if len(email) > 254 or not _EMAIL.match(email) or email.startswith("showdown:"):
             raise AuthError("Enter a valid email address.")
         return email
 
@@ -93,8 +93,12 @@ class AuthService:
             if not hmac.compare_digest(entry["digest"], self._digest(email, str(code).strip())):
                 raise AuthError("That code is wrong or has expired.", 401)
             del self._codes[email]
-        expires = int(now + self.token_ttl)
-        return {"token": self._sign(email, expires), "expires_at": expires, "email": email}
+        return {**self.token_for(email), "email": email}
+
+    def token_for(self, subject: str) -> dict:
+        """A signed token for an identity the caller has already proved: an email, or a ``showdown:`` subject."""
+        expires = int(self.clock() + self.token_ttl)
+        return {"token": self._sign(subject, expires), "expires_at": expires}
 
     def _sign(self, email: str, expires: int) -> str:
         body = base64.urlsafe_b64encode(f"{email}|{expires}".encode()).decode().rstrip("=")
@@ -111,7 +115,7 @@ class AuthService:
             email, expires = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)).decode().rsplit("|", 1)
             if int(expires) < self.clock():
                 return None
-            if self.allowed is not None and email not in self.allowed:
+            if self.allowed is not None and not email.startswith("showdown:") and email not in self.allowed:
                 return None
             return email
         except (ValueError, UnicodeError):

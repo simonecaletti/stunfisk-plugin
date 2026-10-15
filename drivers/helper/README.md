@@ -40,6 +40,21 @@ Load `drivers/helper/client/extension/` as an unpacked extension, then open Show
 After `npm run build`, reload the extension in the browser. Then use the panel
 in the bottom right corner (titled "Stunfisk Coach"): enter your email, type the code the service printed, and open a battle.
 
+## The website, and linking your Showdown account
+
+The service serves a page at its own address, `http://127.0.0.1:8787/` by default. Open it and enter your Showdown
+username. The extension, in a Showdown page where you are logged in as that name, approves the sign-in by itself, and
+the account is linked and confirmed. In the panel, one click signs in as the name your browser is logged in as. Coach
+never asks for your Showdown password. An email and a code still work, and are the only option for a remote service
+([ADR 0004](../../adr/0004-signing-in-with-a-showdown-username.md)). Turn the username option off on a shared computer
+with `--username-login off`.
+
+With an email account you link your Showdown name on the page, and it turns to "confirmed by your browser" once the
+extension reports it. The page also shows the game
+you are playing now, with the suggested play. Design: [ADR 0003](../../adr/0003-linking-a-showdown-account.md).
+
+The extension follows the battle you play in, not one you only watch, switching by itself when you change games.
+
 ## A locally hosted Showdown
 
 The extension also runs on `http://localhost/*` and `http://127.0.0.1/*`, on any port. It docks its panel only where the

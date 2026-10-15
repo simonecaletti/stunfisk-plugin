@@ -63,3 +63,34 @@ test('only a real Showdown client counts, and a page that becomes one later is w
   assert.equal(await waitForShowdownClient(late as never, 1000, 10), true);
   assert.equal(await waitForShowdownClient({} as never, 80, 10), false);
 });
+
+test('the battle the user plays is followed ahead of one they only watch', async () => {
+  const { findBattleRoom, playerRoomIds, openBattleRoomIds } = await import('../src/host.ts');
+  const watched = room(R1, ['|turn|1']);
+  const played = room(R2, ['|turn|1'], { side: { id: 'p1' }, active: [{}] });
+  // watched is in front, played is behind: the user's own game wins
+  const host = classicHost(watched, played);
+  assert.deepEqual(playerRoomIds(host), [R2]);
+  assert.deepEqual(openBattleRoomIds(host).sort(), [R1, R2]);
+  assert.equal(findBattleRoom(host, null), R2);
+  assert.equal(findBattleRoom(host, R1), R2); // already following the watched one: still moves to the played one
+  // two played games: the one in front, then the one already followed
+  const other = room('battle-gen9vgc2026regmc-333', ['|turn|1'], { side: { id: 'p2' } });
+  assert.equal(findBattleRoom(classicHost(other, played), null), other.id);
+  const lobby = { id: 'lobby', battle: null, request: null } as never;
+  const away = classicHost(played, other);
+  away.app.curRoom = lobby;
+  assert.equal(findBattleRoom(away, other.id), other.id);
+  // Preact marks a player with room.side
+  const preact = preactHost(room(R1), { ...room(R2), side: { id: 'p2' } } as never);
+  assert.equal(findBattleRoom(preact, null), R2);
+});
+
+test('a room seen as the user\'s own stays theirs while the client has dropped the request', async () => {
+  const { findBattleRoom } = await import('../src/host.ts');
+  const watched = room(R1, ['|turn|1']);
+  const played = room(R2, ['|turn|1'], null); // between decisions: no request right now
+  const host = classicHost(watched, played);
+  assert.equal(findBattleRoom(host, null), R1); // nothing says it is theirs...
+  assert.equal(findBattleRoom(host, null, new Set([R2])), R2); // ...except what we saw earlier
+});

@@ -18,3 +18,6 @@ packages = ["stunfisk_plugin_common", "stunfisk_plugin_helper"]
 [tool.setuptools.package-dir]
 stunfisk_plugin_common = "common/python/stunfisk_plugin_common"
 stunfisk_plugin_helper = "drivers/helper/service/stunfisk_plugin_helper"
+
+[tool.setuptools.package-data]
+stunfisk_plugin_helper = ["web/*.html"]

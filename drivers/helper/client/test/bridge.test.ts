@@ -73,6 +73,31 @@ test('only known service paths and methods get through', async () => {
   assert.equal(s.calls.length, 6);
 });
 
+test('the page may confirm a link but never create or change one', async () => {
+  const s = service({ 'POST /v1/me/showdown/seen': reply(200, { linked: true, match: true, confirmed: true }) });
+  const { backend } = await wireBridge(s.fetchImpl);
+  await backend.request('POST', '/v1/me/showdown/seen', { name: 'Ash' });
+  assert.equal(s.calls.length, 1);
+  await assert.rejects(backend.request('PUT' as never, '/v1/me/showdown', { name: 'Gary' }), /not allowed/);
+  await assert.rejects(backend.request('POST', '/v1/me/showdown', { name: 'Gary' }), /not allowed/);
+  await assert.rejects(backend.request('DELETE', '/v1/me/showdown'), /not allowed/);
+  assert.equal(s.calls.length, 1);
+});
+
+test('a name sign-in captures its token in the background like an email one', async () => {
+  const s = service({ 'GET /v1/status': reply(200, { username_login: true }), 'POST /v1/auth/username/start': reply(200, { request: 'abcd' }),
+    'POST /v1/auth/username/approve': reply(200, { token: 'N.1', name: 'Ash', expires_at: 9 }), 'GET /v1/me': reply(200, { email: null }) });
+  const { backend } = await wireBridge(s.fetchImpl);
+  await backend.request('GET', '/v1/status');
+  await backend.request('POST', '/v1/auth/username/start', { username: 'Ash' });
+  const approved = await backend.request('POST', '/v1/auth/username/approve', { name: 'Ash' });
+  assert.deepEqual(approved.body, { name: 'Ash', expires_at: 9 }); // no token in the reply
+  await backend.request('GET', '/v1/me');
+  assert.equal(s.calls.at(-1)!.auth, 'Bearer N.1');
+  // the page may not poll for someone else's sign-in token
+  await assert.rejects(backend.request('GET', '/v1/auth/username/poll?request=abcd'), /not allowed/);
+});
+
 test('invalid settings stop a call before it is made', async () => {
   const s = service();
   const { backend } = await wireBridge(s.fetchImpl);

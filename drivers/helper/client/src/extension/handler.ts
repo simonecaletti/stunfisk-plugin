@@ -17,7 +17,7 @@ const SETTINGS = 'settings';
 const TOKENS = 'tokens';
 
 /** The only paths the page may ask for. Anything else is refused, so the bridge is not a general proxy. */
-const ALLOWED = /^\/v1\/(auth\/(request|verify)|me|capabilities|helper\/sessions(\/[0-9a-f]{16}(\/events)?)?)(\?[A-Za-z0-9=&._-]*)?$/;
+const ALLOWED = /^\/v1\/(auth\/(request|verify|username\/(start|approve))|me|me\/showdown\/seen|status|capabilities|helper\/sessions(\/[0-9a-f]{16}(\/events)?)?)(\?[A-Za-z0-9=&._-]*)?$/;
 const METHODS = new Set(['GET', 'POST', 'DELETE']);
 
 export function createHandler(deps: HandlerDeps) {
@@ -86,7 +86,7 @@ export function createHandler(deps: HandlerDeps) {
       try {
         body = (await response.json()) as Record<string, unknown>;
       } catch { /* an empty or non-JSON body */ }
-      if (request.path === '/v1/auth/verify' && response.status === 200 && typeof body.token === 'string') {
+      if ((request.path === '/v1/auth/verify' || request.path === '/v1/auth/username/approve') && response.status === 200 && typeof body.token === 'string') {
         const all = await tokens();
         all[base] = body.token;
         await deps.storage.set(TOKENS, all);

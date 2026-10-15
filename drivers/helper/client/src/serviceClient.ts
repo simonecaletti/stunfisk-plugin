@@ -13,6 +13,11 @@ export class ServiceError extends Error {
   }
 }
 
+export interface ShowdownLink {
+  name: string;
+  confirmed: boolean;
+}
+
 export interface CreateSession {
   room: string;
   format: string;
@@ -37,7 +42,7 @@ export class ServiceClient {
     this.backend = backend;
   }
 
-  private async call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  private async call<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     let reply;
     try {
       reply = await this.backend.request(method, path, body, signal);
@@ -61,8 +66,27 @@ export class ServiceClient {
     return this.call('POST', '/v1/auth/verify', { email, code });
   }
 
-  me(): Promise<{ email: string }> {
+  me(): Promise<{ email: string | null; username: string | null; showdown: ShowdownLink | null }> {
     return this.call('GET', '/v1/me');
+  }
+
+  /** Whether the service offers sign-in with a Showdown name. Public. */
+  status(): Promise<{ username_login: boolean }> {
+    return this.call('GET', '/v1/status');
+  }
+
+  startUsername(username: string): Promise<{ request: string }> {
+    return this.call('POST', '/v1/auth/username/start', { username });
+  }
+
+  /** Approves a sign-in as `name`, from a browser logged in to Showdown as that name. The backend keeps the token. */
+  approveUsername(name: string): Promise<{ name: string; expires_at: number }> {
+    return this.call('POST', '/v1/auth/username/approve', { name });
+  }
+
+  /** Tells the service which Showdown name this browser is logged in as, which confirms a matching link. */
+  seen(name: string): Promise<{ linked: boolean; match: boolean; confirmed: boolean; name?: string }> {
+    return this.call('POST', '/v1/me/showdown/seen', { name });
   }
 
   capabilities(): Promise<Capabilities> {

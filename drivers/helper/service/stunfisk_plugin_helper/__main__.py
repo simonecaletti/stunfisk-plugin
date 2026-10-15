@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .auth import AuthService, load_secret
 from .builtin import default_registry
+from .links import LinkStore
 from .mailers import ConsoleMailer, SmtpMailer
 from .server import DEFAULT_ORIGINS, make_server
 
@@ -23,6 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--smtp-port", type=int, default=587)
     p.add_argument("--smtp-from")
     p.add_argument("--smtp-user")
+    p.add_argument("--username-login", choices=("auto", "on", "off"), default="auto",
+                   help="sign in with a Showdown name proved by your browser. auto: only when listening on this computer")
     p.add_argument("--allow-email", action="append", default=None, help="only these addresses may sign in (repeatable)")
     p.add_argument("--allow-origin", action="append", default=[], help="extra browser origin allowed to call the API")
     args = p.parse_args(argv)
@@ -34,8 +37,14 @@ def main(argv: list[str] | None = None) -> int:
     else:
         mailer = ConsoleMailer()
     allowed = {e.strip().lower() for e in args.allow_email} if args.allow_email else None
+    loopback = args.host in ("127.0.0.1", "::1", "localhost")
+    if args.username_login == "on" and not loopback:
+        p.error("--username-login on needs --host 127.0.0.1: a name proved only by a browser is safe only for a service no one else can reach")
+    username_login = args.username_login == "on" or (args.username_login == "auto" and loopback)
     auth = AuthService(mailer, load_secret(args.state_dir / "secret"), allowed=allowed)
-    server = make_server(args.host, args.port, auth, default_registry(), origins=(*DEFAULT_ORIGINS, *args.allow_origin))
+    server = make_server(args.host, args.port, auth, default_registry(), origins=(*DEFAULT_ORIGINS, *args.allow_origin),
+                         signin="email" if args.mailer == "smtp" else "console",
+                         links=LinkStore(args.state_dir / "links.json"), username_login=username_login)
     print(f"[stunfisk-plugin] helper service on http://{args.host}:{args.port}", flush=True)
     try:
         server.serve_forever()

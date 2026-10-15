@@ -63,6 +63,7 @@ class Session:
         self.analysis: dict[str, Any] | None = None
         self.error: str | None = None
         self.touched = time.time()
+        self.last_event = 0.0
         self.cond = threading.Condition()
         self.wake = threading.Event()
         self.stop = threading.Event()
@@ -94,7 +95,7 @@ class Session:
                 self.request = request
                 self.request_dirty = bool(request)
                 changed = changed or bool(request)
-            self.touched = time.time()
+            self.touched = self.last_event = time.time()
             if changed:
                 self.status = "analysing"
                 self.wake.set()
@@ -111,6 +112,14 @@ class Session:
             self.touched = time.time()
             return {"id": self.id, "status": self.status, "revision": self.revision, "lines": self.state.received,
                     "analysis": self.analysis, "error": self.error}
+
+    def summary(self) -> dict[str, Any]:
+        """What a dashboard needs about this session. Does not count as activity, so watching does not keep it alive."""
+        with self.cond:
+            side = self.state.side_for(self.side_hint, self.request)
+            return {"id": self.id, "room": self.room, "format": self.state.format or self.format, "side": side,
+                    "player": self.user or (self.state.players.get(side) if side else "") or "",
+                    "status": self.status, "revision": self.revision, "analysis": self.analysis, "error": self.error}
 
     def close(self) -> None:
         with self.cond:
@@ -202,6 +211,12 @@ class SessionManager:
             session = Session(owner, body, self.registry)
             self._sessions[session.id] = session
             return session
+
+    def current(self, owner: str) -> Session | None:
+        """The session that last received battle lines: the game the user is playing now."""
+        with self._lock:
+            mine = [s for s in self._sessions.values() if s.owner == owner and s.status != "closed"]
+        return max(mine, key=lambda s: s.last_event, default=None)
 
     def get(self, owner: str, session_id: str) -> Session:
         with self._lock:

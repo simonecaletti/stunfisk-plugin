@@ -1,7 +1,7 @@
 import { loadSettings, parseSettings, saveSettings, serviceUrl, settingsProblems } from '@stunfisk-plugin/common';
 import type { Settings, StorageLike } from '@stunfisk-plugin/common';
 
-export type Method = 'GET' | 'POST' | 'DELETE';
+export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 export interface Reply {
   status: number;
@@ -94,7 +94,7 @@ export class DirectBackend implements Backend {
     try {
       data = (await response.json()) as Record<string, unknown>;
     } catch { /* an empty or non-JSON body */ }
-    if (path === '/v1/auth/verify' && response.status === 200 && typeof data.token === 'string') {
+    if ((path === '/v1/auth/verify' || path === '/v1/auth/username/approve') && response.status === 200 && typeof data.token === 'string') {
       const tokens = this.tokens();
       tokens[base] = data.token;
       this.storage.setItem(TOKENS, JSON.stringify(tokens));

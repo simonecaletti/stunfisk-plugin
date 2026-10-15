@@ -122,7 +122,7 @@ class ServerTest(unittest.TestCase):
 
     def test_sign_in_and_capabilities(self):
         self.sign_in()
-        self.assertEqual(self.c.call("GET", "/v1/me")[1], {"email": "me@example.com"})
+        self.assertEqual(self.c.call("GET", "/v1/me")[1], {"email": "me@example.com", "username": None, "showdown": None})
         caps = self.c.call("GET", "/v1/capabilities")[1]
         self.assertEqual([m["id"] for m in caps["models"]], ["fake"])
         self.assertEqual({e["id"]: e["available"] for e in caps["engines"]}, {"fake": True, "down": False})
@@ -238,6 +238,193 @@ class ServerTest(unittest.TestCase):
         _, view, _ = self.c.call("GET", f"/v1/helper/sessions/{sid}?after=0&wait=5")
         self.assertGreater(view["revision"], 0)
         self.assertLess(time.time() - start, 4)
+
+
+    def raw(self, path):
+        req = urllib.request.Request(self.c.base + path)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.read().decode(), r.headers
+
+    def test_landing_page_is_public_and_locked_down(self):
+        import base64, hashlib, re
+        status, body, headers = self.raw("/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers["Content-Type"])
+        self.assertIn("Stunfisk Coach", body)
+        policy = headers["Content-Security-Policy"]
+        self.assertIn("default-src 'none'", policy)
+        self.assertIn("frame-ancestors 'none'", policy)
+        # the policy allows exactly the page's own inline style and script, and nothing else inline
+        for tag in ("style", "script"):
+            text = re.search(rf"<{tag}>(.*?)</{tag}>", body, re.S).group(1)
+            digest = "'sha256-" + base64.b64encode(hashlib.sha256(text.encode()).digest()).decode() + "'"
+            self.assertIn(f"{tag}-src {digest}", policy)
+        self.assertEqual(body.count("<script"), 1)
+        self.assertNotIn("http://", body.replace("http://www.w3.org", ""))  # no outside resources
+        self.assertEqual(self.raw("/index.html")[0], 200)
+
+    def test_status_is_public_but_brief(self):
+        status, body, _ = self.raw("/v1/status")
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["signin"], "console")
+        self.assertEqual([m["id"] for m in data["models"]], ["fake"])
+        self.assertEqual({e["id"]: e["available"] for e in data["engines"]}, {"fake": True, "down": False})
+        for item in (*data["models"], *data["engines"]):
+            self.assertEqual(set(item), {"id", "name", "available"})  # no reasons, no formats
+        self.assertNotIn("not built", body)
+
+    def test_everything_else_still_needs_sign_in(self):
+        for path in ("/v1/me", "/v1/capabilities", "/anything-else"):
+            self.assertEqual(self.c.call("GET", path)[0], 401, path)
+
+
+    def test_link_a_showdown_name_and_let_the_browser_confirm_it(self):
+        self.sign_in()
+        self.assertEqual(self.c.call("PUT", "/v1/me/showdown", {"name": "Ash Ketchum"})[1], {"name": "Ash Ketchum", "confirmed": False})
+        self.assertEqual(self.c.call("GET", "/v1/me")[1]["showdown"], {"name": "Ash Ketchum", "confirmed": False})
+        self.assertEqual(self.c.call("POST", "/v1/me/showdown/seen", {"name": "Gary"})[1]["match"], False)
+        self.assertEqual(self.c.call("POST", "/v1/me/showdown/seen", {"name": "ashketchum"})[1]["confirmed"], True)
+        self.assertEqual(self.c.call("GET", "/v1/me")[1]["showdown"]["confirmed"], True)
+        self.assertEqual(self.c.call("DELETE", "/v1/me/showdown")[0], 204)
+        self.assertIsNone(self.c.call("GET", "/v1/me")[1]["showdown"])
+
+    def test_link_validation_and_sign_in_requirement(self):
+        self.assertEqual(self.c.call("PUT", "/v1/me/showdown", {"name": "Ash"})[0], 401)
+        self.sign_in()
+        self.assertEqual(self.c.call("PUT", "/v1/me/showdown", {"name": "bad|name"})[0], 400)
+        self.assertEqual(self.c.call("PUT", "/v1/me/showdown", {})[0], 400)
+
+    def test_links_belong_to_their_account(self):
+        self.sign_in("a@example.com")
+        self.c.call("PUT", "/v1/me/showdown", {"name": "Ash"})
+        self.sign_in("b@example.com")
+        self.assertIsNone(self.c.call("GET", "/v1/me")[1]["showdown"])
+
+    def test_current_game_is_the_one_last_fed_and_knows_whether_it_is_the_linked_account(self):
+        self.sign_in()
+        self.assertEqual(self.c.call("GET", "/v1/helper/current")[1], {"session": None, "showdown": None})
+        self.c.call("PUT", "/v1/me/showdown", {"name": "Alice"})
+        first = self.create(room="battle-gen9vgc-1", user="Alice")[1]["id"]
+        second = self.create(room="battle-gen9vgc-2", user="Alice")[1]["id"]
+        self.c.call("POST", f"/v1/helper/sessions/{first}/events", {"from": 0, "lines": ["|turn|1"], "side": "p1"})
+        wait_for(self.c, first, lambda v: v["analysis"] is not None)
+        self.assertEqual(self.c.call("GET", "/v1/helper/current")[1]["session"]["room"], "battle-gen9vgc-1")
+        time.sleep(0.02)
+        self.c.call("POST", f"/v1/helper/sessions/{second}/events", {"from": 0, "lines": ["|turn|1"], "side": "p2"})
+        view = wait_for(self.c, second, lambda v: v["analysis"] is not None)
+        current = self.c.call("GET", "/v1/helper/current")[1]
+        self.assertEqual(current["session"]["room"], "battle-gen9vgc-2")
+        self.assertEqual((current["session"]["side"], current["session"]["player"], current["session"]["linked"]), ("p2", "Alice", True))
+        self.assertEqual(current["session"]["analysis"]["recommended"]["choice"], "move 1, move 2")
+        self.assertEqual(current["showdown"], {"name": "Alice", "confirmed": False})
+
+    def test_someone_elses_game_is_not_the_linked_account(self):
+        self.sign_in()
+        self.c.call("PUT", "/v1/me/showdown", {"name": "Alice"})
+        sid = self.create(user="Bob")[1]["id"]
+        self.c.call("POST", f"/v1/helper/sessions/{sid}/events", {"from": 0, "lines": ["|turn|1"], "side": "p1"})
+        wait_for(self.c, sid, lambda v: v["analysis"] is not None)
+        self.assertFalse(self.c.call("GET", "/v1/helper/current")[1]["session"]["linked"])
+
+    def test_watching_the_current_game_does_not_keep_it_alive_but_closing_ends_it(self):
+        self.sign_in()
+        sid = self.create()[1]["id"]
+        self.assertEqual(self.c.call("GET", "/v1/helper/current")[1]["session"]["id"], sid)
+        self.c.call("DELETE", f"/v1/helper/sessions/{sid}")
+        self.assertIsNone(self.c.call("GET", "/v1/helper/current")[1]["session"])
+
+
+class UsernameServerTest(unittest.TestCase):
+    """Signing in with a Showdown name, proved by the browser. Only on a service that turns it on."""
+
+    def make(self, enabled):
+        registry = Registry()
+        registry.add_model(FakeModel())
+        registry.add_engine(FakeEngine())
+        self.mail = Capture()
+        server = make_server("127.0.0.1", 0, AuthService(self.mail, b"s" * 32, min_interval=0, max_per_hour=100), registry,
+                             username_login=enabled)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (server.sessions.close_all(), server.shutdown(), server.server_close()))
+        return Client(f"http://127.0.0.1:{server.server_address[1]}")
+
+    def test_status_says_whether_it_is_on(self):
+        self.assertTrue(self.make(True).call("GET", "/v1/status")[1]["username_login"])
+        self.assertFalse(self.make(False).call("GET", "/v1/status")[1]["username_login"])
+
+    def test_off_means_off(self):
+        c = self.make(False)
+        for method, path, body in (("POST", "/v1/auth/username/start", {"username": "Ash"}),
+                                   ("POST", "/v1/auth/username/approve", {"name": "Ash"}),
+                                   ("GET", "/v1/auth/username/poll?request=abcd", None)):
+            self.assertEqual(c.call(method, path, body)[0], 404, path)
+
+    def test_page_and_browser_sign_in_together_and_the_link_is_confirmed(self):
+        c = self.make(True)
+        status, started, _ = c.call("POST", "/v1/auth/username/start", {"username": "Ash Ketchum"})
+        self.assertEqual(status, 200)
+        rid = started["request"]
+        self.assertEqual(c.call("GET", f"/v1/auth/username/poll?request={rid}")[1], {"status": "pending", "name": "Ash Ketchum"})
+        # the extension, in a browser logged in as that name
+        status, approved, _ = c.call("POST", "/v1/auth/username/approve", {"name": "Ash Ketchum"})
+        self.assertEqual(status, 200)
+        self.assertTrue(approved["token"])
+        # the page collects its own token
+        status, got, _ = c.call("GET", f"/v1/auth/username/poll?request={rid}")
+        self.assertEqual((status, got["status"], got["name"]), (200, "approved", "Ash Ketchum"))
+        self.assertTrue(got["token"])
+        self.assertEqual(c.call("GET", f"/v1/auth/username/poll?request={rid}")[1], {"status": "expired"})
+        # both tokens are the same account, signed in and already linked and confirmed
+        for token in (approved["token"], got["token"]):
+            c.token = token
+            me = c.call("GET", "/v1/me")[1]
+            self.assertEqual((me["email"], me["username"], me["showdown"]), (None, "Ash Ketchum", {"name": "Ash Ketchum", "confirmed": True}))
+        self.assertEqual(c.call("GET", "/v1/capabilities")[0], 200)
+
+    def test_approving_with_nobody_asking_gives_nothing(self):
+        c = self.make(True)
+        status, body, _ = c.call("POST", "/v1/auth/username/approve", {"name": "Ash"})
+        self.assertEqual(status, 404)
+        self.assertNotIn("token", body)
+
+    def test_a_different_name_cannot_approve(self):
+        c = self.make(True)
+        c.call("POST", "/v1/auth/username/start", {"username": "Ash"})
+        self.assertEqual(c.call("POST", "/v1/auth/username/approve", {"name": "Gary"})[0], 404)
+
+    def test_bad_and_guest_names_are_refused(self):
+        c = self.make(True)
+        for bad in ("", "bad|name", "Guest 123"):
+            self.assertEqual(c.call("POST", "/v1/auth/username/start", {"username": bad})[0], 400, bad)
+            self.assertEqual(c.call("POST", "/v1/auth/username/approve", {"name": bad})[0], 400, bad)
+
+    def test_a_name_account_cannot_relink_or_unlink_itself(self):
+        c = self.make(True)
+        rid = c.call("POST", "/v1/auth/username/start", {"username": "Ash"})[1]["request"]
+        c.token = c.call("POST", "/v1/auth/username/approve", {"name": "Ash"})[1]["token"]
+        self.assertEqual(c.call("PUT", "/v1/me/showdown", {"name": "Gary"})[0], 400)
+        self.assertEqual(c.call("DELETE", "/v1/me/showdown")[0], 400)
+        self.assertEqual(c.call("GET", "/v1/me")[1]["showdown"]["name"], "Ash")
+        self.assertEqual(c.call("POST", "/v1/me/showdown/seen", {"name": "Ash"})[0], 200)
+        del rid
+
+    def test_a_name_account_can_use_the_helper_and_is_the_linked_player(self):
+        c = self.make(True)
+        c.call("POST", "/v1/auth/username/start", {"username": "Alice"})
+        c.token = c.call("POST", "/v1/auth/username/approve", {"name": "Alice"})[1]["token"]
+        body = {"room": "battle-gen9vgc-1", "format": "gen9vgc", "model": "fake", "engine": "fake", "analysis_mode": "fast", "user": "Alice"}
+        sid = c.call("POST", "/v1/helper/sessions", body)[1]["id"]
+        c.call("POST", f"/v1/helper/sessions/{sid}/events", {"from": 0, "lines": ["|turn|1"], "side": "p1"})
+        wait_for(c, sid, lambda v: v["analysis"] is not None)
+        session = c.call("GET", "/v1/helper/current")[1]["session"]
+        self.assertEqual((session["player"], session["linked"]), ("Alice", True))
+
+    def test_an_email_cannot_pose_as_a_name_account(self):
+        c = self.make(True)
+        status, _, _ = c.call("POST", "/v1/auth/request", {"email": "showdown:ash@example.com"})
+        self.assertEqual(status, 400)
+        self.assertEqual(self.mail.sent, [])
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ registry = Registry()
 registry.add_model(Model())
 registry.add_engine(Engine())
 server = make_server("127.0.0.1", 0, AuthService(PrintMailer(), b"e" * 32, min_interval=0, max_per_hour=1000), registry,
-                     origins=("https://play.pokemonshowdown.com",))
+                     origins=("https://play.pokemonshowdown.com",), username_login=True)
 print(f"PORT {server.server_address[1]}", flush=True)
 threading.Thread(target=server.serve_forever, daemon=True).start()
 sys.stdin.read()  # the test closes stdin to stop us

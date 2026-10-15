@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stunfisk Coach</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--ink:#1d2030;--muted:#646a80;--line:#e3e6ef;--accent:#3b4cca;--ok:#1a8f4d;--bad:#c0392b;--chip:#eef0fa}
+@media (prefers-color-scheme:dark){:root{--bg:#14151d;--card:#1c1e29;--ink:#e8eaf3;--muted:#9aa0b8;--line:#2c2f3f;--accent:#8e9bff;--ok:#4cc27f;--bad:#ff7b6b;--chip:#262a3b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:2.5rem 1rem 4rem}
+h1{font-size:2.1rem;margin:0 0 .25rem;letter-spacing:-.02em}
+.lead{font-size:1.1rem;margin:0 0 .25rem}
+.sub{color:var(--muted);margin:0 0 2rem}
+h2{font-size:1.05rem;margin:2.25rem 0 .75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem 1.15rem}
+.row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:.35rem 0}
+.dot{width:.7rem;height:.7rem;border-radius:50%;background:var(--muted);flex:none}
+.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+.k{color:var(--muted);min-width:9rem}
+code{font:0.9em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--chip);padding:.1rem .4rem;border-radius:6px}
+.chip{display:inline-block;background:var(--chip);border-radius:999px;padding:.1rem .65rem;font-size:.9rem}
+.chip.off{opacity:.6;text-decoration:line-through}
+button{font:inherit;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:.2rem .7rem;cursor:pointer}
+@media (prefers-color-scheme:dark){button{color:#14151d}}
+ol{padding-left:1.25rem;margin:.25rem 0}li{margin:.5rem 0}
+.apps{display:grid;gap:.6rem}
+.app{display:flex;justify-content:space-between;gap:1rem;align-items:baseline}
+.tag{font-size:.8rem;border-radius:999px;padding:.05rem .6rem;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.live{border-color:var(--ok);color:var(--ok)}
+input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.25rem .6rem;min-width:0;flex:1 1 12rem}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+.msg{color:var(--muted);margin:.4rem 0 0}.msg.err{color:var(--bad)}
+.rec{font-size:1.25rem;font-weight:650;margin:.2rem 0}
+.hidden{display:none}
+.note{color:var(--muted);margin:.2rem 0}
+a{color:var(--accent)}
+footer{margin-top:2.5rem;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>Stunfisk Coach</h1>
+  <p class="lead">Advice for the Pokémon Showdown battle you have open.</p>
+  <p class="sub">A browser extension and a service. The service runs on your computer, or on a server you choose.</p>
+
+  <h2>This service</h2>
+  <div class="card" id="status">
+    <div class="row"><span class="dot" id="dot"></span><strong id="state">Checking…</strong></div>
+    <div class="row"><span class="k">Address for the panel</span><code id="addr"></code><button id="copy" type="button">Copy</button></div>
+    <div class="row"><span class="k">Sign-in codes</span><span id="signin">…</span></div>
+    <div class="row"><span class="k">Models</span><span id="models">…</span></div>
+    <div class="row"><span class="k">Engines</span><span id="engines">…</span></div>
+    <div class="row"><span class="k">Version</span><span id="version">…</span></div>
+  </div>
+
+  <h2>Your account</h2>
+  <div class="card" id="account">
+    <div id="out">
+      <div id="nameLogin" class="hidden">
+        <p style="margin:.1rem 0 .5rem">Enter your Showdown username. Your browser, logged in to Showdown as that name, approves the sign-in. There is no password and no code.</p>
+        <div class="row"><input id="loginName" placeholder="Your Showdown username" maxlength="18" autocomplete="off"><button id="nameSignIn" type="button">Sign in</button><button id="cancelName" class="ghost hidden" type="button">Cancel</button></div>
+        <p class="note hidden" id="waitHelp"></p>
+        <p class="note"><a href="#" id="useEmail">Use an email address instead</a></p>
+      </div>
+      <div id="emailLogin">
+        <p style="margin:.1rem 0 .5rem">Sign in with your email. The service sends a code. There is no password.</p>
+        <div class="row" id="emailRow"><input id="email" type="email" placeholder="you@example.com" autocomplete="email"><button id="sendCode" type="button">Send me a code</button></div>
+        <div class="row hidden" id="codeRow"><input id="code" inputmode="numeric" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code"><button id="verify" type="button">Sign in</button></div>
+        <p class="note hidden" id="useName"><a href="#" id="useNameLink">Use my Showdown username instead</a></p>
+      </div>
+    </div>
+    <div id="in" class="hidden">
+      <div class="row"><span class="k">Signed in as</span><strong id="who"></strong><button id="signout" class="ghost" type="button">Sign out</button></div>
+      <div class="row"><span class="k">Showdown account</span><strong id="linked">not linked</strong><span class="chip hidden" id="confirmed"></span></div>
+      <div class="row" id="linkRow"><input id="sdname" placeholder="Your Showdown name" maxlength="18" autocomplete="off"><button id="link" type="button">Link</button><button id="unlink" class="ghost hidden" type="button">Unlink</button></div>
+      <p class="note" id="linkHelp"></p>
+    </div>
+    <p class="msg" id="accMsg"></p>
+  </div>
+
+  <h2>Your game now</h2>
+  <div class="card" id="game">
+    <p class="msg" id="gameMsg">Sign in to see the game you are playing.</p>
+    <div id="gameBody" class="hidden">
+      <div class="row"><span class="k">Battle</span><code id="room"></code></div>
+      <div class="row"><span class="k">Playing as</span><span id="player"></span></div>
+      <div class="row"><span class="k">Position</span><span id="pos"></span></div>
+      <div class="rec" id="rec"></div>
+      <div id="win" class="note"></div>
+      <div id="notes"></div>
+    </div>
+  </div>
+
+  <h2>Set it up</h2>
+  <div class="card">
+    <ol>
+      <li><strong>Load the extension.</strong> In Chrome, open <code>chrome://extensions</code>, switch on Developer mode, and choose Load unpacked. In Firefox, open <code>about:debugging</code>, choose Load Temporary Add-on, then in <code>about:addons</code> allow site access for Showdown. Pick the <code>extension</code> folder from the repository.</li>
+      <li><strong>Open Showdown.</strong> The official site or one served from your own computer. A box titled Stunfisk Coach appears in the bottom right corner.</li>
+      <li><strong>Sign in.</strong> Enter your Showdown username on this page. Your browser, logged in to Showdown as that name, approves it by itself. Or use your email: the service sends a six-digit code. There is no password either way.</li>
+      <li><strong>Open a battle.</strong> The helper reads it from the page and shows a suggested play.</li>
+    </ol>
+  </div>
+
+  <h2>Applications</h2>
+  <div class="card apps">
+    <div class="app"><span><strong>Live Match Helper</strong><br><span style="color:var(--muted)">A suggested play for the battle in front of you.</span></span><span class="tag live">available</span></div>
+    <div class="app"><span><strong>Matchup Explorer and Labs</strong><br><span style="color:var(--muted)">Study a pairing turn by turn.</span></span><span class="tag">planned</span></div>
+    <div class="app"><span><strong>Game Review</strong><br><span style="color:var(--muted)">Go through a finished game, decision by decision.</span></span><span class="tag">planned</span></div>
+    <div class="app"><span><strong>Practice and ladder bot</strong><br><span style="color:var(--muted)">Play against the model.</span></span><span class="tag">planned</span></div>
+  </div>
+
+  <h2>Where your battle goes</h2>
+  <div class="card">
+    <p style="margin:.2rem 0"><strong>On this computer:</strong> nothing leaves it. The extension talks to this service on <code>127.0.0.1</code>.</p>
+    <p style="margin:.4rem 0"><strong>On a remote service:</strong> the battle you have open is sent to that service. Choose one you trust.</p>
+    <p style="margin:.4rem 0 .2rem">The helper only reads. It never submits a move to Showdown.</p>
+  </div>
+
+  <footer>
+    <a href="https://github.com/simonecaletti/stunfisk-plugin">Source on GitHub</a>
+  </footer>
+</main>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY = 'stunfisk-coach-token';
+  var token = null;
+  try { token = localStorage.getItem(KEY); } catch (e) {}
+  var email = '';
+
+  $('addr').textContent = location.origin;
+  $('copy').addEventListener('click', function () {
+    var done = function () { $('copy').textContent = 'Copied'; setTimeout(function () { $('copy').textContent = 'Copy'; }, 1500); };
+    if (navigator.clipboard) navigator.clipboard.writeText(location.origin).then(done, function () {});
+  });
+
+  function api(method, path, body) {
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = 'Bearer ' + token;
+    return fetch(path, { method: method, headers: headers, body: body === undefined ? undefined : JSON.stringify(body), cache: 'no-store' })
+      .then(function (r) { return r.status === 204 ? { status: 204, data: {} } : r.json().catch(function () { return {}; }).then(function (d) { return { status: r.status, data: d }; }); });
+  }
+  function show(el, on) { el.classList.toggle('hidden', !on); }
+  function say(id, text, bad) { var el = $(id); el.textContent = text || ''; el.className = 'msg' + (bad ? ' err' : ''); }
+
+  // --- status ---
+  function chips(el, items) {
+    el.textContent = '';
+    if (!items || !items.length) { el.textContent = 'none'; return; }
+    items.forEach(function (it) {
+      var s = document.createElement('span');
+      s.className = 'chip' + (it.available ? '' : ' off');
+      s.textContent = it.name;
+      s.title = it.available ? 'available' : 'not available on this service';
+      el.appendChild(s); el.appendChild(document.createTextNode(' '));
+    });
+  }
+  fetch('/v1/status', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (s) {
+    $('dot').className = 'dot ok';
+    $('state').textContent = 'Running';
+    $('signin').textContent = s.signin === 'email' ? 'Sent to your email address' : 'Printed in this service\u2019s log';
+    chips($('models'), s.models);
+    chips($('engines'), s.engines);
+    $('version').textContent = s.version;
+    usernameLogin = !!s.username_login;
+    applyLoginMode();
+  }).catch(function () {
+    $('dot').className = 'dot bad';
+    $('state').textContent = 'Cannot read the service status';
+  });
+
+  // --- account ---
+  var signedIn = false;
+  var usernameLogin = false;
+  var showEmail = false;
+  function applyLoginMode() {
+    var byName = usernameLogin && !showEmail;
+    show($('nameLogin'), byName);
+    show($('emailLogin'), !byName);
+    show($('useName'), usernameLogin && showEmail);
+  }
+  function render(me) {
+    signedIn = !!me;
+    show($('out'), !me); show($('in'), !!me);
+    if (!me) { say('gameMsg', 'Sign in to see the game you are playing.'); show($('gameBody'), false); return; }
+    email = me.email;
+    var byName = me.email === null; // signed in with a Showdown name: the account is the link
+    $('who').textContent = byName ? me.username + ' (Showdown)' : me.email;
+    show($('linkRow'), !byName);
+    var link = me.showdown;
+    $('linked').textContent = link ? link.name : 'not linked';
+    show($('unlink'), !!link);
+    $('link').textContent = link ? 'Change' : 'Link';
+    var c = $('confirmed');
+    show(c, !!link);
+    if (link) c.textContent = link.confirmed ? 'confirmed by your browser' : 'waiting for your browser';
+    $('linkHelp').textContent = byName ? 'You signed in with your Showdown name, so this account is already linked. The helper follows the game you are playing automatically.' : !link
+      ? 'Enter the name you play under on Showdown. Coach never asks for your Showdown password.'
+      : link.confirmed
+        ? 'Your browser is logged in to Showdown as this name. The helper follows the game you are playing automatically.'
+        : 'Open Showdown in the browser where Stunfisk Coach is installed, signed in here and logged in to Showdown as ' + link.name + '. This turns to confirmed on its own.';
+  }
+  function refreshMe() {
+    if (!token) return render(null);
+    return api('GET', '/v1/me').then(function (r) {
+      if (r.status === 200) render(r.data);
+      else { token = null; try { localStorage.removeItem(KEY); } catch (e) {} render(null); }
+    }).catch(function () { say('accMsg', 'Cannot reach the service.', true); });
+  }
+  $('sendCode').addEventListener('click', function () {
+    var value = $('email').value.trim();
+    if (!value) return say('accMsg', 'Enter your email address.', true);
+    api('POST', '/v1/auth/request', { email: value }).then(function (r) {
+      if (r.status === 202) { email = value; show($('codeRow'), true); $('code').focus(); say('accMsg', 'Look for the code in this service\u2019s log, or in your inbox if it sends email.'); }
+      else say('accMsg', r.data.error || 'Could not send a code.', true);
+    }).catch(function () { say('accMsg', 'Cannot reach the service.', true); });
+  });
+  // --- sign in with a Showdown name, approved by the browser ---
+  var nameTimer = null;
+  function stopName() {
+    if (nameTimer) clearInterval(nameTimer);
+    nameTimer = null; show($('cancelName'), false); show($('waitHelp'), false); $('nameSignIn').disabled = false;
+  }
+  $('nameSignIn').addEventListener('click', function () {
+    var name = $('loginName').value.trim();
+    if (!name) return say('accMsg', 'Enter your Showdown username.', true);
+    stopName();
+    api('POST', '/v1/auth/username/start', { username: name }).then(function (r) {
+      if (r.status !== 200) return say('accMsg', r.data.error || 'Could not start the sign-in.', true);
+      var rid = r.data.request, until = Date.now() + 5 * 60 * 1000;
+      say('accMsg', '');
+      $('nameSignIn').disabled = true; show($('cancelName'), true);
+      $('waitHelp').textContent = 'Waiting for your browser. Open Showdown where Stunfisk Coach is installed, logged in as ' + name + '. It approves by itself.';
+      show($('waitHelp'), true);
+      nameTimer = setInterval(function () {
+        if (Date.now() > until) { stopName(); return say('accMsg', 'The sign-in timed out. Try again.', true); }
+        api('GET', '/v1/auth/username/poll?request=' + encodeURIComponent(rid)).then(function (p) {
+          if (p.data.status === 'approved' && p.data.token) {
+            token = p.data.token; try { localStorage.setItem(KEY, token); } catch (e) {}
+            stopName(); say('accMsg', ''); refreshMe();
+          } else if (p.data.status === 'expired') { stopName(); say('accMsg', 'The sign-in expired. Try again.', true); }
+        }).catch(function () {});
+      }, 1000);
+    }).catch(function () { say('accMsg', 'Cannot reach the service.', true); });
+  });
+  $('cancelName').addEventListener('click', function () { stopName(); say('accMsg', ''); });
+  $('loginName').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('nameSignIn').click(); });
+  $('useEmail').addEventListener('click', function (e) { e.preventDefault(); stopName(); showEmail = true; applyLoginMode(); });
+  $('useNameLink').addEventListener('click', function (e) { e.preventDefault(); showEmail = false; applyLoginMode(); });
+
+  $('verify').addEventListener('click', function () {
+    api('POST', '/v1/auth/verify', { email: email || $('email').value.trim(), code: $('code').value.trim() }).then(function (r) {
+      if (r.status === 200 && r.data.token) {
+        token = r.data.token; try { localStorage.setItem(KEY, token); } catch (e) {}
+        $('code').value = ''; show($('codeRow'), false); say('accMsg', ''); refreshMe();
+      } else say('accMsg', r.data.error || 'That code did not work.', true);
+    }).catch(function () { say('accMsg', 'Cannot reach the service.', true); });
+  });
+  ['email', 'code', 'sdname'].forEach(function (id) {
+    $(id).addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      $(id === 'email' ? 'sendCode' : id === 'code' ? 'verify' : 'link').click();
+    });
+  });
+  $('link').addEventListener('click', function () {
+    api('PUT', '/v1/me/showdown', { name: $('sdname').value }).then(function (r) {
+      if (r.status === 200) { $('sdname').value = ''; say('accMsg', ''); refreshMe(); }
+      else say('accMsg', r.data.error || 'Could not link that name.', true);
+    });
+  });
+  $('unlink').addEventListener('click', function () { api('DELETE', '/v1/me/showdown').then(refreshMe); });
+  $('signout').addEventListener('click', function () {
+    token = null; try { localStorage.removeItem(KEY); } catch (e) {}
+    render(null); applyLoginMode();
+  });
+
+  // --- the game being played now ---
+  function line(el, text) { el.textContent = text || ''; }
+  function renderGame(data) {
+    var s = data.session;
+    if (!s) { say('gameMsg', 'No game is being followed. Open a battle on Showdown, with Stunfisk Coach installed and signed in.'); show($('gameBody'), false); return; }
+    say('gameMsg', s.status === 'error' ? (s.error || 'The analysis failed.') : '', s.status === 'error');
+    show($('gameBody'), true);
+    line($('room'), s.room);
+    var who = s.player || 'unknown';
+    line($('player'), who + (s.side ? ' (' + s.side + ')' : '') + (s.linked ? ' \u2713 your linked account' : (data.showdown ? ' \u2014 not your linked account' : '')));
+    var a = s.analysis;
+    if (!a) { line($('pos'), 'Reading the battle\u2026'); line($('rec'), ''); line($('win'), ''); $('notes').textContent = ''; return; }
+    line($('pos'), a.phase === 'ended' ? 'The battle is over.' : a.phase === 'preview' ? 'Team preview' : 'Turn ' + a.turn + (a.phase === 'switch' ? ' (switch-in)' : ''));
+    line($('rec'), a.recommended ? a.recommended.action : '');
+    line($('win'), typeof a.win === 'number' ? 'Win chance ' + (a.win * 100).toFixed(1) + '%' : '');
+    var notes = $('notes'); notes.textContent = '';
+    (a.notes || []).forEach(function (n) { var d = document.createElement('div'); d.className = 'note'; d.textContent = n; notes.appendChild(d); });
+  }
+  function pollGame() {
+    if (!signedIn) return;
+    api('GET', '/v1/helper/current').then(function (r) { if (r.status === 200) renderGame(r.data); }).catch(function () {});
+  }
+  setInterval(pollGame, 1500);
+  setInterval(function () { if (signedIn) refreshMe(); }, 5000); // picks up the browser's confirmation
+
+  refreshMe().then(pollGame);
+})();
+</script>
+</body>
+</html>

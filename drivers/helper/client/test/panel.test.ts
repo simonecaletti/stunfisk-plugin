@@ -5,7 +5,7 @@ import type { ViewState } from '../src/controller.ts';
 import { renderPanel } from '../src/panel.ts';
 
 const base = (over: Partial<ViewState> = {}): ViewState => ({
-  settings: { ...DEFAULT_SETTINGS }, problems: [], connection: 'signed-out', capabilities: null, following: null,
+  settings: { ...DEFAULT_SETTINGS }, problems: [], connection: 'signed-out', capabilities: null, following: null, link: null, who: '', usernameLogin: false, browserName: '',
   analysis: null, status: 'idle', message: '', ...over,
 });
 
@@ -54,4 +54,31 @@ test('remote mode warns that the battle leaves this computer', () => {
   const html = renderPanel(base({ settings: { ...DEFAULT_SETTINGS, run_mode: 'remote', remote_url: 'https://s.example.com' } }));
   assert.match(html, /is sent to that service/);
   assert.match(html, /data-set="remote_url"/);
+});
+
+test('the panel says whether a Showdown account is linked and confirmed', () => {
+  const signedIn = { connection: 'signed-in' as const, settings: { ...DEFAULT_SETTINGS, email: 'me@example.com' } };
+  assert.match(renderPanel(base({ ...signedIn, link: null })), /No Showdown account linked\. Link it at http:\/\/127\.0\.0\.1:8787/);
+  assert.match(renderPanel(base({ ...signedIn, link: { name: 'Ash', confirmed: false } })), /<b>Ash<\/b> \(waiting for this browser/);
+  assert.match(renderPanel(base({ ...signedIn, link: { name: 'Ash', confirmed: true } })), /<b>Ash<\/b> \(confirmed\)/);
+  assert.ok(!renderPanel(base({ ...signedIn, link: { name: '<img src=x>', confirmed: true } })).includes('<img'));
+});
+
+test('with username sign-in on, a logged-in Showdown name gets a one-click sign-in and email stays an alternative', () => {
+  const on = renderPanel(base({ usernameLogin: true, browserName: 'Ash Ketchum' }));
+  assert.match(on, /Logged in to Showdown as <b>Ash Ketchum<\/b>/);
+  assert.match(on, /data-act="signinname">Sign in as Ash Ketchum/);
+  assert.match(on, /data-act="useemail"/);
+  assert.ok(!on.includes('data-f="email"'));
+  assert.match(renderPanel(base({ usernameLogin: true, browserName: 'Ash' }), true, true), /data-f="email"[\s\S]*data-act="usename"/);
+  assert.match(renderPanel(base({ usernameLogin: true, browserName: '' })), /Log in to Showdown to sign in with your username/);
+  assert.ok(!renderPanel(base({ usernameLogin: true, browserName: '' })).includes('data-act="signinname"'));
+  assert.match(renderPanel(base()), /data-f="email"/); // off: email only
+  assert.ok(!renderPanel(base()).includes('usename'));
+  assert.ok(!renderPanel(base({ usernameLogin: true, browserName: '<img src=x>' })).includes('<img'));
+});
+
+test('a signed-in name account shows its name, not an email', () => {
+  const html = renderPanel(base({ connection: 'signed-in', who: 'Ash Ketchum', link: { name: 'Ash Ketchum', confirmed: true } }));
+  assert.match(html, /Signed in as <b>Ash Ketchum<\/b>/);
 });
