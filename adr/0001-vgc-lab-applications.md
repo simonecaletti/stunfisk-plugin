@@ -7,9 +7,9 @@
 
 VGC Lab (`VGC_Lab_sharable/sharable`) is a local Python app with a bundled Showdown server.
 Its web pages talk to one HTTP/JSON backend (`app/review/server.py`).
-We want every one of its applications to be available from a single Pokémon Showdown plugin, built on the Showdex codebase.
-Showdex is not checked out on this machine, so everything said about it here is unverified.
-It must be checked before the first ADR about the client architecture.
+We want every one of its applications to be available from a single Pokémon Showdown plugin named **Stunfisk Coach**.
+Coach is its own extension. It is not part of Showdex and does not build on its code.
+Showdex is only a reference for how a client extension reads the page ([OTHERS.md](../OTHERS.md)).
 
 The plugin has these requirements:
 
@@ -62,7 +62,7 @@ Source: `app/explorer.py`, `app/review/web/explorer.html`, `app/test_explorer*.p
 Observes a Showdown battle (including private rooms and best-of-three sets) and shows suggested plays, expected opponent moves
 and likelihoods. It never submits moves. Can analyse a finished game afterwards.
 Source: `app/live_analysis.py`, `app/review/live_service.py`, `app/review/web/live.html`.
-This is the best fit for a plugin: Showdex already reads live battle state in the client, so the observer can reuse that.
+This is the best fit for a plugin: the client already holds the live battle state, so the observer can read it directly.
 
 #### 5. Game Review (`/`) — level B
 
@@ -75,7 +75,7 @@ Win chances depend on a per-model calibration, so each model needs its own calib
 
 Adds a Review button to finished battles on play.pokemonshowdown.com and captures the battle stream.
 Source: `app/review/extension/`.
-Inside a Showdex-based plugin this becomes a native button and the separate extension goes away.
+Inside Coach this becomes a native button and the separate VGC Lab extension goes away.
 
 #### 7. Practice games — level A
 
@@ -146,7 +146,6 @@ Probably out of scope for the plugin UI. Keep it as a command-line tool run by t
 ## Open questions
 
 - Remote mode: who hosts it, and how are email sign-ins verified? This needs its own ADR before any account code is written.
-- How the Showdex client is extended: unverified until the repo is checked out.
 
 ## Alternatives considered
 

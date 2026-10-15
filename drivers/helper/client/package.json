@@ -7,6 +7,6 @@
   "scripts": {
     "test": "node --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit -p .",
-    "build": "esbuild src/main.ts --bundle --format=iife --target=es2022 --outfile=extension/helper.js"
+    "build": "esbuild helper=src/main.ts content=src/extension/content.ts background=src/extension/background.ts --bundle --format=iife --target=es2022 --outdir=extension"
   }
 }

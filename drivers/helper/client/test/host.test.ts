@@ -50,3 +50,16 @@ test('non-string queue entries are skipped', () => {
   (r.battle.stepQueue as unknown[]).push(null, 5, '|turn|2');
   assert.deepEqual(readOpenBattle(classicHost(r), R1)!.lines, ['|turn|2']);
 });
+
+test('only a real Showdown client counts, and a page that becomes one later is waited for', async () => {
+  const { hasShowdownClient, waitForShowdownClient } = await import('../src/host.ts');
+  assert.equal(hasShowdownClient({}), false);
+  assert.equal(hasShowdownClient({ app: {} } as never), false);
+  assert.equal(hasShowdownClient({ app: { rooms: {} } } as never), false); // rooms alone is not enough
+  assert.equal(hasShowdownClient({ app: { receive() {}, rooms: {} } } as never), true); // classic
+  assert.equal(hasShowdownClient({ PS: { join() {}, rooms: {} } } as never), true); // rewritten
+  const late: { app?: unknown } = {};
+  setTimeout(() => { late.app = { receive() {}, rooms: {} }; }, 60);
+  assert.equal(await waitForShowdownClient(late as never, 1000, 10), true);
+  assert.equal(await waitForShowdownClient({} as never, 80, 10), false);
+});

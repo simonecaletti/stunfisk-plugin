@@ -32,7 +32,7 @@ class SmtpMailer(Mailer):
 
     def send_code(self, email: str, code: str, minutes: int) -> None:
         message = EmailMessage()
-        message["From"], message["To"], message["Subject"] = self.sender, email, "Your Stunfisk sign-in code"
+        message["From"], message["To"], message["Subject"] = self.sender, email, "Your Stunfisk Coach sign-in code"
         message.set_content(f"Your sign-in code is {code}. It is valid for {minutes} minutes.\n"
                             "If you did not ask for it, ignore this message.")
         with smtplib.SMTP(self.host, self.port, timeout=15) as smtp:

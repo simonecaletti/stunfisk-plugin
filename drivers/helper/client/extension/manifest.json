@@ -1,11 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Stunfisk helper",
+  "name": "Stunfisk Coach",
   "version": "0.0.0",
   "description": "Advice for the Pokémon Showdown battle you have open, from a model running on your computer or a service you choose.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
   "content_scripts": [
     {
-      "matches": ["https://play.pokemonshowdown.com/*", "https://*.psim.us/*"],
+      "matches": ["https://play.pokemonshowdown.com/*", "https://*.psim.us/*", "http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://play.pokemonshowdown.com/*", "https://*.psim.us/*", "http://localhost/*", "http://127.0.0.1/*"],
       "js": ["helper.js"],
       "world": "MAIN",
       "run_at": "document_idle"

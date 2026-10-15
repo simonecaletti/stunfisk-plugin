@@ -13,8 +13,28 @@ interface RoomLike {
 }
 
 export interface HostWindow {
-  app?: { curRoom?: RoomLike | null; curSideRoom?: RoomLike | null; rooms?: Record<string, RoomLike>; user?: { get?(k: string): unknown; attributes?: { name?: string } } };
-  PS?: { room?: RoomLike | null; rooms?: Record<string, RoomLike>; user?: { name?: string } };
+  app?: { receive?: unknown; curRoom?: RoomLike | null; curSideRoom?: RoomLike | null; rooms?: Record<string, RoomLike>; user?: { get?(k: string): unknown; attributes?: { name?: string } } };
+  PS?: { join?: unknown; room?: RoomLike | null; rooms?: Record<string, RoomLike>; user?: { name?: string } };
+}
+
+/**
+ * Whether this page is a Showdown client, the official one or one served from your own computer.
+ * Only a client has `app.receive` (classic) or `PS.join` (rewritten) next to its room list.
+ */
+export function hasShowdownClient(host: HostWindow): boolean {
+  const app = host.app;
+  const ps = host.PS;
+  return !!(app && typeof app.receive === 'function' && app.rooms) || !!(ps && typeof ps.join === 'function' && ps.rooms);
+}
+
+/** Waits for the client to finish starting. Resolves false if this page never becomes one. */
+export async function waitForShowdownClient(host: HostWindow, timeoutMs = 60_000, everyMs = 250): Promise<boolean> {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    if (hasShowdownClient(host)) return true;
+    await new Promise((r) => setTimeout(r, everyMs));
+  }
+  return hasShowdownClient(host);
 }
 
 export interface OpenBattle {

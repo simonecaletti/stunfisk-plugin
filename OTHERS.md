@@ -61,7 +61,7 @@ Copy this block under "Details" for each new plugin.
 
 **How it integrates with Pokémon Showdown:** a content script loaded into the page. It supports both the classic client (`window.app`) and the rewritten Preact client (`window.PS`) through separate bootstrapper classes. It reads battles from `room.battle.stepQueue` and `room.request`.
 
-**Worth borrowing:** the two-host approach, and the way it reads live battle state without a second connection. [ADR 0002](adr/0002-helper-architecture.md) uses the same fields.
+**Worth borrowing:** the two-host approach, and the way it reads live battle state without a second connection. Stunfisk Coach reads the same fields ([ADR 0002](adr/0002-helper-architecture.md)) but shares no code with it.
 
 **Weaknesses or gaps:** no move recommendations and no model. It is a calculator, not a player.
 

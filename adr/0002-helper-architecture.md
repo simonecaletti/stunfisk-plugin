@@ -12,18 +12,30 @@ the current battle directly, not be given a link or a log.
 
 A Showdown client already holds everything the helper needs. Both generations of the client keep, per battle room, the
 list of every protocol line received (`room.battle.stepQueue`) and the private request (`room.request`). The classic
-client keeps rooms in `window.app`, the rewritten client in `window.PS`. Showdex reads the same fields. Showdex
-(`doshidak/showdex`, AGPL-3.0, version 1.4.2 when checked) runs in both clients, so a plugin built the same way does too.
+client keeps rooms in `window.app`, the rewritten client in `window.PS`. Showdex (`doshidak/showdex`, AGPL-3.0) reads the
+same fields in both clients, which shows the approach works. The plugin is named **Stunfisk Coach**. It is its own
+extension, not a Showdex page, and does not use Showdex code.
 
 The plugin also has the settings from ADR 0001: sign in with an email, choose the model, choose the engine, and run
 locally or remotely.
 
 ## Decision
 
+**Identity.** Stunfisk Coach is a standalone browser extension. It has its own manifest, panel and service. It works
+with or without Showdex installed, and the two do not interact. The Live Match Helper is its first application.
+
 **Layout.** Shared interfaces live in `common/`. Each application lives in its own folder under `drivers/`. The helper is
 `drivers/helper/`, with a `client/` (TypeScript, runs in the page) and a `service/` (Python, runs on the user's computer
 or a server). `common/` holds the settings record, the helper wire format and the adapter interfaces, in JSON Schema,
 TypeScript and Python. The three are kept in step by tests.
+
+**Extension.** Stunfisk Coach is a Manifest V3 browser extension for Chrome and Firefox, in three parts. A page script
+runs in the Showdown page, reads the battle and draws the panel. A relay (a content script in the extension's own world)
+passes the page's requests on. A background script holds the settings and the sign-in token and is the only code that
+calls the service. The page script asks for a service path such as `/v1/me`, never for a URL or a token. The background
+script accepts a fixed list of paths and methods, builds the URL from the stored settings, and attaches the token.
+A token is sent only to the service that issued it. The sign-in reply reaches the page without its token. Without the
+extension, the page script falls back to its own `fetch` and storage, which is how a development build runs.
 
 **Reading the battle.** The client follows the battle in front of the user. Every half second it reads the line list and
 the request from the host. It sends the service only the lines the service has not seen, numbered by position, and the
@@ -55,15 +67,19 @@ are still listed, with the reason, so the settings screen can show it.
 - The helper works in both Showdown clients and needs no link, paste, password or second connection.
 - It sends the open battle to whichever service the user chose. In remote mode that means a third party sees the
   battle. The panel says so.
-- The sign-in token is kept in the page's storage in the current build, so scripts on the Showdown page could read it.
-  An extension storage area is the fix and is a follow-up.
+- The sign-in token and the settings live in the extension's own storage, and the page never sees the token. A script on
+  the Showdown page can still ask the background to call the service, within the fixed list of paths and the saved
+  address, so it could act as the signed-in user. It can already read the battle, so this adds little.
+- Calls from the background avoid mixed-content blocking and, I believe, Chrome's local network permission prompt for a
+  page calling `127.0.0.1`. The prompt behaviour is not verified.
 - Stunfisk gives one recommended play, not a ranked table with win chances. The panel shows the extra fields when a
   model supplies them. VGC Lab's own bot supplied them, so its helper showed more. That is the level A and level B
   split from ADR 0001.
-- The panel is a docked element, not yet a Showdex-style room. Moving it into a room means building against Showdex's
-  bootstrapper classes, and that decision comes with the first Showdex-based page.
-- Copying code from Showdex would make this plugin AGPL-3.0. None is copied so far. Stunfisk is also AGPL-3.0.
-- Not yet checked: a run inside a real Showdown client, and a run with the real Stunfisk bot installed. The tests use a
+- The panel is a docked element that Coach owns. It does not become a Showdown room, so it cannot use Showdown's tab
+  system. That is accepted for now.
+- No Showdex code is used, so its license does not apply here. Stunfisk is AGPL-3.0, which may govern what Coach can reuse
+  from it. That is a question for the maintainer.
+- Not yet checked: a run inside a real Showdown client, loaded in both browsers, and a run with the real Stunfisk bot installed. The tests use a
   stand-in host and a stand-in player for these. Win-chance calibration, best-of-three series memory and "analyse the
   finished game" from VGC Lab are not ported.
 
@@ -72,6 +88,6 @@ are still listed, with the reason, so the settings screen can show it.
 - **Port VGC Lab's design: the service opens its own websocket to Showdown.** It works for spectated links but needs the
   user's password for private rooms, duplicates what the client already has, and breaks on every client change to the
   chat HTML it parses.
-- **Fork Showdex and add the helper as a page.** It gives native rooms and its Redux store, at the price of tracking a
-  large upstream and taking its license. It stays open for later, once the helper's service API is settled.
+- **Fork Showdex and add the helper as a page.** It would give native rooms and its Redux store, at the price of tracking a
+  large upstream and taking its license. Rejected: Coach is meant to be its own plugin.
 - **Password accounts.** More to store and secure than a code sent to an email address, with no benefit here.

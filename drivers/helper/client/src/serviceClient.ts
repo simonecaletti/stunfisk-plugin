@@ -1,7 +1,6 @@
 import type { Analysis, Capabilities, SessionStatus } from '@stunfisk-plugin/common';
-
-export type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) =>
-  Promise<{ status: number; ok: boolean; json(): Promise<unknown>; text(): Promise<string> }>;
+import { NetworkError } from './backend.ts';
+import type { Backend } from './backend.ts';
 
 export class ServiceError extends Error {
   status: number;
@@ -30,43 +29,35 @@ export interface EventsBody {
   request?: Record<string, unknown> | null;
 }
 
-/** The helper service's v1 API (see drivers/helper/service/stunfisk_plugin_helper/server.py). */
+/** The helper service's v1 API (see drivers/helper/service/stunfisk_plugin_helper/server.py), over a Backend. */
 export class ServiceClient {
-  private fetch: FetchLike;
-  private base: () => string;
-  private token: () => string | null;
+  private backend: Backend;
 
-  constructor(fetch: FetchLike, base: () => string, token: () => string | null) {
-    this.fetch = fetch;
-    this.base = base;
-    this.token = token;
+  constructor(backend: Backend) {
+    this.backend = backend;
   }
 
-  private async call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const token = this.token();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    let response;
+  private async call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+    let reply;
     try {
-      response = await this.fetch(this.base() + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal });
+      reply = await this.backend.request(method, path, body, signal);
     } catch (error) {
-      if ((error as { name?: string }).name === 'AbortError') throw error;
-      throw new ServiceError(0, `Cannot reach the service at ${this.base()}. Is it running?`);
+      if (error instanceof NetworkError && error.aborted) throw error;
+      if (error instanceof NetworkError) throw new ServiceError(0, error.message);
+      throw error;
     }
-    if (response.status === 204) return undefined as T;
-    let data: Record<string, unknown> = {};
-    try {
-      data = (await response.json()) as Record<string, unknown>;
-    } catch { /* an empty or non-JSON body */ }
-    if (!response.ok) throw new ServiceError(response.status, String(data.error ?? `The service answered ${response.status}.`), data);
-    return data as T;
+    if (reply.status === 204) return undefined as T;
+    if (reply.status < 200 || reply.status >= 300) {
+      throw new ServiceError(reply.status, String(reply.body.error ?? `The service answered ${reply.status}.`), reply.body);
+    }
+    return reply.body as T;
   }
 
   requestCode(email: string): Promise<{ sent: boolean }> {
     return this.call('POST', '/v1/auth/request', { email });
   }
 
-  verify(email: string, code: string): Promise<{ token: string; expires_at: number; email: string }> {
+  verify(email: string, code: string): Promise<{ expires_at: number; email: string }> {
     return this.call('POST', '/v1/auth/verify', { email, code });
   }
 

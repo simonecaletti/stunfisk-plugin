@@ -1,9 +1,9 @@
-import { loadSettings, saveSettings, serviceUrl, settingsProblems } from '@stunfisk-plugin/common';
-import type { Analysis, Capabilities, Settings, Side, StorageLike } from '@stunfisk-plugin/common';
+import { parseSettings, settingsProblems } from '@stunfisk-plugin/common';
+import type { Analysis, Capabilities, Settings, Side } from '@stunfisk-plugin/common';
+import type { Backend } from './backend.ts';
 import { findBattleRoom, readOpenBattle } from './host.ts';
 import type { HostWindow, OpenBattle } from './host.ts';
 import { ServiceClient, ServiceError } from './serviceClient.ts';
-import type { FetchLike } from './serviceClient.ts';
 
 export type Connection = 'signed-out' | 'code-sent' | 'signed-in';
 
@@ -20,8 +20,7 @@ export interface ViewState {
 
 export interface ControllerOptions {
   host: HostWindow;
-  storage: StorageLike;
-  fetch: FetchLike;
+  backend: Backend;
   /** Milliseconds between looks at the open battle. */
   tickMs?: number;
   /** Seconds the service may hold a poll open. */
@@ -30,8 +29,6 @@ export interface ControllerOptions {
   clearInterval?: (id: unknown) => void;
 }
 
-const tokenKey = (url: string) => `stunfisk-plugin:token:${url}`;
-
 /**
  * Follows the battle in front of the user and keeps the service's copy of it up to date.
  *
@@ -39,11 +36,14 @@ const tokenKey = (url: string) => `stunfisk-plugin:token:${url}`;
  * seen. The service answers by polling. Nothing the user is shown is ever sent back to Showdown.
  */
 export class HelperController {
-  private o: Required<Omit<ControllerOptions, 'host' | 'storage' | 'fetch'>> & Pick<ControllerOptions, 'host' | 'storage' | 'fetch'>;
+  private o: Required<Omit<ControllerOptions, 'host' | 'backend'>> & Pick<ControllerOptions, 'host' | 'backend'>;
   private api: ServiceClient;
   private listeners = new Set<(v: ViewState) => void>();
   private timer: unknown = null;
   private ticking = false;
+  private active = false;
+  /** Bumped whenever the session is dropped, so a tick that was mid-flight knows its result is stale. */
+  private epoch = 0;
   private pendingEmail = '';
 
   private settings: Settings;
@@ -62,8 +62,8 @@ export class HelperController {
       setInterval: (fn, ms) => setInterval(fn, ms), clearInterval: (id) => clearInterval(id as never),
       ...options,
     };
-    this.settings = loadSettings(options.storage);
-    this.api = new ServiceClient(options.fetch, () => serviceUrl(this.settings), () => this.token());
+    this.settings = parseSettings(null);
+    this.api = new ServiceClient(options.backend);
   }
 
   // --- state for the UI -------------------------------------------------------------
@@ -94,21 +94,24 @@ export class HelperController {
 
   async start(): Promise<void> {
     if (this.timer) return;
+    this.active = true;
+    this.settings = await this.o.backend.getSettings();
     await this.resume();
     this.timer = this.o.setInterval(() => void this.tick(), this.o.tickMs);
   }
 
   async stop(): Promise<void> {
+    this.active = false;
     if (this.timer) this.o.clearInterval(this.timer);
     this.timer = null;
     await this.endSession();
   }
 
-  /** Called at start and after settings change: checks the stored token against the chosen service. */
+  /** Called at start and after the service changes: asks the service whether we are still signed in. */
   private async resume(): Promise<void> {
     this.analysis = null;
     this.capabilities = null;
-    if (settingsProblems(this.settings).length || !this.token()) {
+    if (settingsProblems(this.settings).length) {
       this.connection = this.pendingEmail ? 'code-sent' : 'signed-out';
       return this.emit();
     }
@@ -118,27 +121,19 @@ export class HelperController {
       this.capabilities = await this.api.capabilities();
       this.message = '';
     } catch (error) {
-      this.handle(error);
+      if (error instanceof ServiceError && error.status === 401) {
+        this.connection = this.pendingEmail ? 'code-sent' : 'signed-out'; // simply not signed in yet
+        this.message = '';
+      } else {
+        this.handle(error);
+      }
     }
     this.emit();
   }
 
-  private token(): string | null {
-    try {
-      return this.o.storage.getItem(tokenKey(serviceUrl(this.settings)));
-    } catch {
-      return null;
-    }
-  }
-
-  private setToken(value: string | null): void {
-    const key = tokenKey(serviceUrl(this.settings));
-    this.o.storage.setItem(key, value ?? '');
-  }
-
   private handle(error: unknown): void {
     if (error instanceof ServiceError && error.status === 401 && this.connection === 'signed-in') {
-      this.setToken(null);
+      void this.o.backend.signOut();
       this.connection = 'signed-out';
       this.session = null;
       this.message = 'Your sign-in expired. Sign in again.';
@@ -154,8 +149,7 @@ export class HelperController {
 
   async updateSettings(patch: Partial<Settings>): Promise<void> {
     const before = this.settings;
-    this.settings = { ...this.settings, ...patch };
-    saveSettings(this.o.storage, this.settings);
+    this.settings = await this.o.backend.setSettings(patch);
     const serviceChanged = before.run_mode !== this.settings.run_mode || before.local_url !== this.settings.local_url || before.remote_url !== this.settings.remote_url;
     const sessionChanged = serviceChanged || before.model !== this.settings.model || before.engine !== this.settings.engine || before.analysis_mode !== this.settings.analysis_mode;
     if (sessionChanged) await this.endSession();
@@ -164,8 +158,7 @@ export class HelperController {
   }
 
   async requestCode(email: string): Promise<void> {
-    this.settings = { ...this.settings, email: email.trim() };
-    saveSettings(this.o.storage, this.settings);
+    this.settings = await this.o.backend.setSettings({ email: email.trim() });
     const problems = settingsProblems(this.settings);
     if (!this.settings.email) return this.say('Enter your email address.');
     if (problems.length) return this.say(problems[0]);
@@ -182,8 +175,7 @@ export class HelperController {
 
   async verifyCode(code: string): Promise<void> {
     try {
-      const result = await this.api.verify(this.pendingEmail || this.settings.email, code.trim());
-      this.setToken(result.token);
+      await this.api.verify(this.pendingEmail || this.settings.email, code.trim());
       this.pendingEmail = '';
       this.connection = 'signed-in';
       this.message = '';
@@ -199,8 +191,8 @@ export class HelperController {
     this.pendingEmail = '';
     await this.endSession();
     try {
-      this.setToken(null);
-    } catch { /* settings may be invalid; there is then no token to clear */ }
+      await this.o.backend.signOut();
+    } catch { /* nothing to forget */ }
     this.connection = 'signed-out';
     this.capabilities = null;
     this.analysis = null;
@@ -211,7 +203,7 @@ export class HelperController {
 
   /** Looks at the open battle once. The host may call this on its own events; the timer calls it too. */
   async tick(): Promise<void> {
-    if (this.ticking || this.connection !== 'signed-in' || settingsProblems(this.settings).length) return;
+    if (!this.active || this.ticking || this.connection !== 'signed-in' || settingsProblems(this.settings).length) return;
     this.ticking = true;
     try {
       const roomId = findBattleRoom(this.o.host, this.following);
@@ -234,10 +226,16 @@ export class HelperController {
   }
 
   private async begin(battle: OpenBattle): Promise<void> {
+    const epoch = this.epoch;
     const created = await this.api.createSession({
       room: battle.roomId, format: battle.format, user: battle.user,
       model: this.settings.model, engine: this.settings.engine, analysis_mode: this.settings.analysis_mode,
     });
+    if (epoch !== this.epoch || !this.active || this.connection !== 'signed-in') {
+      // Signed out, stopped or restarted while we were creating it: nobody wants this session any more.
+      void this.api.closeSession(created.id).catch(() => {});
+      return;
+    }
     const poll = new AbortController();
     this.session = { id: created.id, sent: 0, lastRequest: '', side: null, poll };
     this.message = '';
@@ -302,6 +300,7 @@ export class HelperController {
   }
 
   private async endSession(): Promise<void> {
+    this.epoch++;
     const s = this.session;
     this.session = null;
     this.status = 'idle';

@@ -62,10 +62,10 @@ function settingsForm(v: ViewState): string {
 /** The whole panel as HTML. Every value is escaped; behaviour is attached by `mountPanel` through `data-*` attributes. */
 export function renderPanel(v: ViewState, open = true): string {
   const body = open ? `
-    <section>${v.connection === 'signed-in' ? advice(v.analysis, v) : '<p class="muted">Sign in to get advice.</p>'}${v.message ? `<div class="${v.status === 'error' ? 'err' : 'muted'}">${esc(v.message)}</div>` : ''}</section>
+    <section><h4>Live match helper</h4>${v.connection === 'signed-in' ? advice(v.analysis, v) : '<p class="muted">Sign in to get advice.</p>'}${v.message ? `<div class="${v.status === 'error' ? 'err' : 'muted'}">${esc(v.message)}</div>` : ''}</section>
     <section><h4>Account</h4>${account(v)}</section>
     <section><h4>Settings</h4>${settingsForm(v)}</section>` : '';
-  return `<div class="sfh"><header data-act="toggle"><b>Stunfisk helper</b><span>${open ? '–' : '+'}</span></header>${body}</div>`;
+  return `<div class="sfh"><header data-act="toggle"><b>Stunfisk Coach</b><span>${open ? '–' : '+'}</span></header>${body}</div>`;
 }
 
 interface DomLike {

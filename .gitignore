@@ -2,6 +2,6 @@ node_modules/
 dist/
 __pycache__/
 *.pyc
-drivers/helper/client/extension/helper.js
+drivers/helper/client/extension/*.js
 *.egg-info/
 build/

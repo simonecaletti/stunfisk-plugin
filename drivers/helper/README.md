@@ -1,15 +1,17 @@
 # Live Match Helper
 
-Advice for the Pokémon Showdown battle you have open. It reads the battle straight from the client in the page, with
+The first application in Stunfisk Coach. Advice for the Pokémon Showdown battle you have open. It reads the battle straight from the client in the page, with
 no link or log to paste. It never submits a move. Design: [ADR 0002](../../adr/0002-helper-architecture.md).
 
 ```
-play.pokemonshowdown.com                      your computer, or a server
-┌────────────────────────────┐   HTTP /v1    ┌─────────────────────────────┐
-│ client/  reads room.battle │ ───────────▶ │ service/  sessions          │
-│ and room.request, shows    │ ◀─────────── │  └ model adapter (Stunfisk) │
-│ the panel                  │   polling     │      └ engine (pscpp)       │
-└────────────────────────────┘               └─────────────────────────────┘
+play.pokemonshowdown.com                                 your computer, or a server
+┌────────────────────────────┐  ┌──────────────────┐  HTTP /v1  ┌─────────────────────────────┐
+│ page script: reads         │  │ extension:       │ ─────────▶ │ service/  sessions          │
+│ room.battle and            │─▶│ relay, then the  │ ◀───────── │  └ model adapter (Stunfisk) │
+│ room.request, draws panel  │  │ background script│  polling   │      └ engine (pscpp)       │
+└────────────────────────────┘  └──────────────────┘            └─────────────────────────────┘
+   asks for /v1/... paths         holds settings and the token,
+                                  and makes every call
 ```
 
 ## Run it
@@ -28,8 +30,24 @@ The Stunfisk repository's Python packages must be importable for the Stunfisk mo
 PYTHONPATH=common/python:drivers/helper/service python3 -m stunfisk_plugin_helper
 ```
 
-Load `drivers/helper/client/extension/` as an unpacked extension in Chrome or Firefox, open Showdown, and use the panel
-in the bottom right corner: enter your email, type the code the service printed, and open a battle.
+Load `drivers/helper/client/extension/` as an unpacked extension, then open Showdown:
+
+- **Chrome:** `chrome://extensions`, switch on Developer mode, **Load unpacked**.
+- **Firefox:** `about:debugging`, **This Firefox**, **Load Temporary Add-on**, pick `manifest.json`. Firefox asks for
+  site access separately. In `about:addons`, open Stunfisk Coach, then Permissions, and allow access to
+  `play.pokemonshowdown.com`. Without it the panel never appears.
+
+After `npm run build`, reload the extension in the browser. Then use the panel
+in the bottom right corner (titled "Stunfisk Coach"): enter your email, type the code the service printed, and open a battle.
+
+## A locally hosted Showdown
+
+The extension also runs on `http://localhost/*` and `http://127.0.0.1/*`, on any port. It docks its panel only where the
+page is a Showdown client, so other local pages are left alone. In Firefox, allow site access for those addresses too,
+as for the official site.
+
+A client served under another name, such as `http://my-machine:8080`, needs that address added to both `matches` lists
+in `drivers/helper/client/extension/manifest.json`, then a rebuild and a reload.
 
 ## Settings
 
