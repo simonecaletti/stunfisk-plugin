@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stunfisk-plugin"
+version = "0.0.0"
+description = "Services behind the Stunfisk plugin for Pokémon Showdown"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+stunfisk-helper = "stunfisk_plugin_helper.__main__:main"
+
+[tool.setuptools]
+packages = ["stunfisk_plugin_common", "stunfisk_plugin_helper"]
+
+[tool.setuptools.package-dir]
+stunfisk_plugin_common = "common/python/stunfisk_plugin_common"
+stunfisk_plugin_helper = "drivers/helper/service/stunfisk_plugin_helper"

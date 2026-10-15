@@ -3,3 +3,5 @@ dist/
 __pycache__/
 *.pyc
 drivers/helper/client/extension/helper.js
+*.egg-info/
+build/
