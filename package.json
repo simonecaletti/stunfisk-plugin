@@ -1,0 +1,18 @@
+{
+  "name": "stunfisk-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["common/ts", "drivers/helper/client"],
+  "scripts": {
+    "test": "npm test --workspaces && npm run test:py",
+    "test:py": "PYTHONPATH=common/python:drivers/helper/service python3 -m unittest discover -s common/python/tests && PYTHONPATH=common/python:drivers/helper/service python3 -m unittest discover -s drivers/helper/service/tests",
+    "typecheck": "npm run typecheck --workspaces",
+    "build": "npm run build -w drivers/helper/client"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
+  }
+}

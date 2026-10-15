@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "helper.schema.json",
+  "title": "Live Match Helper wire format, v1",
+  "$defs": {
+    "choice": {
+      "type": "object",
+      "required": ["action", "choice"],
+      "properties": {
+        "action": { "type": "string", "description": "Readable text for the play." },
+        "choice": { "type": "string", "description": "The text Showdown's /choose takes. The helper never sends it." },
+        "win": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "likelihood": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["phase", "turn", "notes"],
+      "properties": {
+        "phase": { "enum": ["waiting", "preview", "turn", "switch", "ended"] },
+        "turn": { "type": "integer", "minimum": 0 },
+        "side": { "enum": ["p1", "p2", null] },
+        "win": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "recommended": { "oneOf": [{ "$ref": "#/$defs/choice" }, { "type": "null" }] },
+        "choices": { "type": "array", "items": { "$ref": "#/$defs/choice" } },
+        "expected_opponent": { "type": "array", "items": { "$ref": "#/$defs/choice" } },
+        "notes": { "type": "array", "items": { "type": "string" } },
+        "model": { "type": "string" },
+        "engine": { "type": "string" }
+      }
+    },
+    "createSession": {
+      "type": "object",
+      "required": ["room", "format", "model", "engine", "analysis_mode"],
+      "properties": {
+        "room": { "type": "string", "pattern": "^battle-[a-z0-9-]+$" },
+        "format": { "type": "string" },
+        "user": { "type": "string", "description": "The Showdown name the client is logged in as, if any." },
+        "model": { "type": "string" },
+        "engine": { "type": "string" },
+        "analysis_mode": { "enum": ["fast", "standard", "deep"] }
+      }
+    },
+    "events": {
+      "type": "object",
+      "required": ["from", "lines"],
+      "properties": {
+        "from": { "type": "integer", "minimum": 0, "description": "Index of lines[0] in the battle's full line list." },
+        "lines": { "type": "array", "items": { "type": "string" } },
+        "side": { "enum": ["p1", "p2", null] },
+        "request": { "type": ["object", "null"], "description": "The latest private request, as Showdown's client holds it." }
+      }
+    },
+    "sessionStatus": {
+      "type": "object",
+      "required": ["id", "status", "revision", "lines"],
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "enum": ["idle", "analysing", "ready", "error", "closed"] },
+        "revision": { "type": "integer" },
+        "lines": { "type": "integer", "description": "How many lines the service holds. The client resends from here on a 409." },
+        "analysis": { "oneOf": [{ "$ref": "#/$defs/analysis" }, { "type": "null" }] },
+        "error": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

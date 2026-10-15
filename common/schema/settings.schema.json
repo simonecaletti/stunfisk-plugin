@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "settings.schema.json",
+  "title": "Plugin settings",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "email": { "type": "string", "description": "Address used to sign in to the service. Empty until the user signs in." },
+    "model": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$", "default": "stunfisk" },
+    "engine": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$", "default": "pscpp" },
+    "run_mode": { "enum": ["local", "remote"], "default": "local" },
+    "local_url": { "type": "string", "default": "http://127.0.0.1:8787", "description": "Must be on this computer." },
+    "remote_url": { "type": "string", "default": "", "description": "Must be https." },
+    "analysis_mode": { "enum": ["fast", "standard", "deep"], "default": "fast" }
+  }
+}

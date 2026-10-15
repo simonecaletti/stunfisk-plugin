@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Stunfisk helper",
+  "version": "0.0.0",
+  "description": "Advice for the Pokémon Showdown battle you have open, from a model running on your computer or a service you choose.",
+  "content_scripts": [
+    {
+      "matches": ["https://play.pokemonshowdown.com/*", "https://*.psim.us/*"],
+      "js": ["helper.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    }
+  ]
+}

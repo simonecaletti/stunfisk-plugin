@@ -1,0 +1,12 @@
+{
+  "name": "@stunfisk-plugin/helper-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@stunfisk-plugin/common": "*" },
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit -p .",
+    "build": "esbuild src/main.ts --bundle --format=iife --target=es2022 --outfile=extension/helper.js"
+  }
+}
